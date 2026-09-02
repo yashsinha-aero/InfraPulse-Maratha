@@ -1,23 +1,38 @@
 import { useEffect, useRef, useState } from "react";
-import { imageUrl, myComplaints, submitComplaint, WS_URL } from "../api/client";
+import { myComplaints, submitComplaint, WS_URL } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import DashboardHeader from "../components/DashboardHeader";
+import ComplaintForm from "../components/ComplaintForm";
+import ComplaintCard from "../components/ComplaintCard";
+import { 
+  Plus, 
+  Search, 
+  Inbox, 
+  Clock, 
+  CheckCircle2, 
+  AlertCircle 
+} from "lucide-react";
 
 export default function UserDashboard() {
-  const { logout } = useAuth();
+  const { auth } = useAuth();
   const [complaints, setComplaints] = useState([]);
-  const [form, setForm] = useState({ name: "", address: "", description: "" });
-  const [photo, setPhoto] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const formRef = useRef(null);
+  const [showForm, setShowForm] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const wsRef = useRef(null);
 
   async function refresh() {
     try {
-      setComplaints(await myComplaints());
+      const data = await myComplaints();
+      setComplaints(data);
+      setError("");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -27,148 +42,174 @@ export default function UserDashboard() {
     wsRef.current = ws;
     ws.onmessage = () => refresh();
     return () => ws.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handlePhoto(file) {
-    setPhoto(file);
-    setPhotoPreview(file ? URL.createObjectURL(file) : null);
-  }
-
-  async function submit(e) {
-    e.preventDefault();
-    if (!photo) return setError("Please attach a photo");
+  async function handleComplaintSubmit(formData) {
     setSubmitting(true);
     setError("");
     try {
-      const fd = new FormData();
-      fd.append("name", form.name);
-      fd.append("address", form.address);
-      fd.append("description", form.description);
-      fd.append("photo", photo);
-      await submitComplaint(fd);
-      setForm({ name: "", address: "", description: "" });
-      handlePhoto(null);
-      formRef.current?.reset();
-      refresh();
+      await submitComplaint(formData);
+      await refresh();
+      setShowForm(false);
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     } finally {
       setSubmitting(false);
     }
   }
 
+  // Key metrics (Clean, meaningful, 3 numbers only)
+  const totalCount = complaints.length;
+  const activeCount = complaints.filter(c => c.status !== "Resolved").length;
+  const resolvedCount = complaints.filter(c => c.status === "Resolved").length;
+
+  // Filter complaints
+  const filteredComplaints = complaints.filter(c => {
+    const matchesStatus = statusFilter === "all" ? true : c.status === statusFilter;
+    const matchesSearch = !searchQuery.trim() ? true : (
+      (c.defect_label && c.defect_label.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (c.address && c.address.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (c.description && c.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (c.category && c.category.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+    return matchesStatus && matchesSearch;
+  });
+
   return (
-    <div className="dashboard">
-      <div className="topbar">
-        <div className="brand">
-          <div className="brand-mark">IP</div>
-          <div className="brand-text">
-            <h1>InfraPulse</h1>
-            <p>User dashboard</p>
-          </div>
-        </div>
-        <div className="topbar-right">
-          <span className="chip">👤 User</span>
-          <button className="btn-ghost" onClick={logout}>Log out</button>
-        </div>
-      </div>
+    <div className="clean-app-shell">
+      {/* 1. Header with single primary action */}
+      <DashboardHeader 
+        onNewComplaint={() => setShowForm(true)}
+        isStaff={false}
+      />
 
-      <div className="card">
-        <h3>Register a new complaint</h3>
-        <form onSubmit={submit} ref={formRef}>
-          <div className="field-group">
-            <label className="field-label">Your name</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-            />
+      <main className="clean-main-container">
+        {/* 2. Top Summary Bar (Spacious, 3 meaningful metrics) */}
+        <section className="clean-hero-bar">
+          <div className="hero-text-block">
+            <h1 className="hero-greeting">Your Complaints</h1>
+            <p className="hero-subtext">
+              Track previously submitted infrastructure issues and live repair queue progress.
+            </p>
           </div>
-          <div className="field-group">
-            <label className="field-label">Address / location</label>
-            <input
-              placeholder="e.g. Hostel 4, Corridor near Room 212"
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              required
-            />
-          </div>
-          <div className="field-group">
-            <label className="field-label">Description</label>
-            <textarea
-              rows={3}
-              placeholder="Briefly describe what you see"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-          </div>
-          <div className="field-group">
-            <label className="field-label">Photo of the defect</label>
-            <div className="file-drop">
-              <span className="file-drop-label">
-                {photo ? "Click to change photo" : "📷 Click to choose a photo"}
-              </span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handlePhoto(e.target.files[0])}
-              />
+
+          <div className="hero-metrics-cluster">
+            <div className="clean-stat-chip">
+              <span className="stat-number">{totalCount}</span>
+              <span className="stat-label">Total Filed</span>
             </div>
-            {photoPreview && (
-              <div className="file-preview">
-                <img src={photoPreview} alt="preview" />
-                <span>{photo.name}</span>
-              </div>
-            )}
-          </div>
-          {error && <p className="error">{error}</p>}
-          <button className="btn-primary" type="submit" disabled={submitting}>
-            {submitting && <span className="spinner" />}
-            {submitting ? "Analyzing photo..." : "Submit Complaint"}
-          </button>
-        </form>
-      </div>
-
-      <div className="section-title">
-        Your Complaints <span className="count">({complaints.length})</span>
-      </div>
-
-      {complaints.length === 0 ? (
-        <div className="empty-state">
-          <span className="emoji">📭</span>
-          No complaints yet — submit one above to get started.
-        </div>
-      ) : (
-        <div className="complaint-list">
-          {complaints.map((c) => (
-            <div className="complaint-card" key={c.id}>
-              <img src={imageUrl(c.image_path)} alt={c.defect_label} />
-              <div className="complaint-body">
-                <div className="complaint-top-row">
-                  <span className="defect-name">{c.defect_label.replace(/_/g, " ")}</span>
-                  <span className="category-pill">{c.category}</span>
-                  <span className={`status-pill status-${c.status.replace(/\s/g, "")}`}>
-                    {c.status}
-                  </span>
-                </div>
-                <div className="meta-row">
-                  <span>Confidence: <b>{(c.confidence * 100).toFixed(0)}%</b></span>
-                  {c.status !== "Resolved" && c.queue_position && (
-                    <span>Queue position: <b>#{c.queue_position}</b></span>
-                  )}
-                </div>
-                <div className="severity-bar-track" style={{ marginTop: 4 }}>
-                  <div
-                    className="severity-bar-fill"
-                    style={{ width: `${Math.min(c.severity_score, 100)}%` }}
-                  />
-                </div>
-              </div>
+            <div className="clean-stat-chip stat-active">
+              <span className="stat-number">{activeCount}</span>
+              <span className="stat-label">In Progress</span>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="clean-stat-chip stat-resolved">
+              <span className="stat-number">{resolvedCount}</span>
+              <span className="stat-label">Resolved</span>
+            </div>
+          </div>
+        </section>
+
+        {/* 3. New Complaint Modal / Expanded Card */}
+        {showForm && (
+          <section className="clean-form-container">
+            <ComplaintForm 
+              onSubmit={handleComplaintSubmit}
+              submitting={submitting}
+              error={error}
+              onCancel={() => setShowForm(false)}
+            />
+          </section>
+        )}
+
+        {/* 4. Controls: Filter tabs & Search */}
+        <section className="clean-feed-controls">
+          <div className="filter-pill-bar">
+            <button 
+              className={`filter-btn ${statusFilter === "all" ? "active" : ""}`}
+              onClick={() => setStatusFilter("all")}
+            >
+              All ({totalCount})
+            </button>
+            <button 
+              className={`filter-btn ${statusFilter === "Submitted" ? "active" : ""}`}
+              onClick={() => setStatusFilter("Submitted")}
+            >
+              Submitted
+            </button>
+            <button 
+              className={`filter-btn ${statusFilter === "Assigned" ? "active" : ""}`}
+              onClick={() => setStatusFilter("Assigned")}
+            >
+              Assigned
+            </button>
+            <button 
+              className={`filter-btn ${statusFilter === "In Progress" ? "active" : ""}`}
+              onClick={() => setStatusFilter("In Progress")}
+            >
+              In Progress
+            </button>
+            <button 
+              className={`filter-btn ${statusFilter === "Resolved" ? "active" : ""}`}
+              onClick={() => setStatusFilter("Resolved")}
+            >
+              Resolved
+            </button>
+          </div>
+
+          <div className="search-box-clean">
+            <Search size={14} className="search-glass" />
+            <input 
+              type="text"
+              placeholder="Search by issue or location..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="clean-search-input"
+            />
+          </div>
+        </section>
+
+        {/* 5. Clean Complaints Feed */}
+        <section className="clean-complaints-feed">
+          {loading ? (
+            <div className="clean-loading-state">
+              <span>Loading complaints...</span>
+            </div>
+          ) : filteredComplaints.length === 0 ? (
+            <div className="clean-empty-box">
+              <div className="empty-icon-circle">
+                <Inbox size={28} strokeWidth={1.6} />
+              </div>
+              <h3 className="empty-title">
+                {searchQuery || statusFilter !== "all" 
+                  ? "No matching complaints found" 
+                  : "No complaints submitted yet"}
+              </h3>
+              <p className="empty-desc">
+                {searchQuery || statusFilter !== "all" 
+                  ? "Try resetting your search or selecting a different status filter."
+                  : "Photograph damaged roads, leaking drains, spalling concrete, or peeling paint to submit a report."}
+              </p>
+              {!showForm && (
+                <button 
+                  className="btn-primary-action"
+                  onClick={() => setShowForm(true)}
+                >
+                  <Plus size={16} />
+                  <span>Submit a Complaint</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="clean-cards-stack">
+              {filteredComplaints.map((c) => (
+                <ComplaintCard key={c.id} complaint={c} />
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
