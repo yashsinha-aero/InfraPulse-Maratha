@@ -6,7 +6,7 @@ A user photographs a building/facility defect; InfraPulse classifies it,
 routes it to the right maintenance category's staff queue, ranks it by
 priority, and lets users and staff track the live queue.
 
-📄 **Full write-up: [DOCUMENTATION.md](DOCUMENTATION.md)** — approach, detection
+**Full write-up: [DOCUMENTATION.md](DOCUMENTATION.md)** — approach, detection
 logic, priority-ranking method, evaluation results, limitations, and
 suggestions for improving accuracy, plus architecture and API reference.
 Problem statement: [ReadMe.md](ReadMe.md) / [InfraPulse.pdf](InfraPulse.pdf).
@@ -47,30 +47,40 @@ notebooks/   earlier Kaggle training notebook, kept for history
 
 ## Quickstart
 
-Backend:
+### 1-Step Full-Stack Launch (Recommended)
 
+From the project root directory, run:
+
+```bash
+npm start
+# or: npm run dev
+```
+
+This concurrently boots up **both**:
+1. **Python FastAPI Backend** on `http://localhost:8005` (API + in-process ML)
+2. **React 19 Frontend** on `http://localhost:5173`
+
+---
+
+### Alternative: Running Separately
+
+**Backend:**
 ```bash
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m app.seed          # optional: create demo accounts (wipes DB)
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8005
 ```
 
-`head.pt` (the trained classifier) is already committed — no training needed
-to run. Docs at `http://localhost:8000/docs`.
+`head.pt` (the trained classifier) is already committed — no training needed to run. Interactive docs at `http://localhost:8005/docs`.
 
-Frontend:
-
+**Frontend:**
 ```bash
 cd frontend
 npm install
-cp .env.example .env         # point VITE_API_URL / VITE_WS_URL at the backend
-npm run dev                   # http://localhost:5173
+npm run dev                 # http://localhost:5173
 ```
-
-See [backend/README.md](backend/README.md) and
-[frontend/README.md](frontend/README.md) for details.
 
 ## Demo accounts
 

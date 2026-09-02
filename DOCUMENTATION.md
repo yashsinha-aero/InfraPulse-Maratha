@@ -249,18 +249,15 @@ Rationale:
 
 ### 5.2 Visible severity / extent (per photo, 0–100)
 
-`backend/app/ml/severity.py` — deterministic classical CV, no learned model,
-`defect-type aware`:
+`backend/app/ml/severity.py` — deterministic, defect-type aware Computer Vision engine with CLAHE contrast normalization, morphological damage zone dilation, and non-linear perceptual scaling:
 
 | Defect type | Method | Intuition |
 | --- | --- | --- |
-| **spalling**, **cracked_tiles** | `_edge_density_score`: greyscale → Gaussian blur → **Canny edge detection** (50/150) → fraction of edge pixels, scaled ×400, clipped 0–100 | more/longer cracks and broken edges ⇒ more edge pixels ⇒ higher score |
-| **stagnant_water** | `_color_area_score`: **HSV range mask** for low-saturation dark/reflective regions (`H 0–180, S 0–60, V 20–160`) → area fraction × 150, clipped 0–100 | larger visible water/wet area ⇒ larger masked area ⇒ higher score |
-| **paint_peeling** | `_color_area_score`: **Otsu threshold** on greyscale → area fraction of the brighter region × 150, clipped 0–100 | more patchy discoloration / exposed substrate contrast ⇒ larger thresholded area |
+| **spalling**, **cracked_tiles** | `_crack_spalling_score`: CLAHE contrast enhancement → Canny edge detection (40/120) → **Morphological dilation (5×5)** to measure the physical damage influence zone → Laplacian surface roughness weighting → square-root perceptual scaling ($\sqrt{\text{fraction}} \times 160 \times \text{roughness}$) | Captures entire fractured/crumbling surface area rather than 1-pixel hairlines, scaling into realistic 35–95 score ranges |
+| **stagnant_water** | `_stagnant_water_score`: Dual-channel segmentation (**HSV reflective mask** $H \in [0, 180], S \in [0, 75], V \in [15, 175]$ + **Specular highlight thresholding**) → square-root scaling | Measures true visible puddle coverage including water reflections and surface glints |
+| **paint_peeling** | `_paint_peeling_score`: CLAHE contrast normalization → **Otsu substrate thresholding** + **Flake boundary edge gradient analysis** ($0.6 \times \text{flake} + 0.4 \times \text{otsu}$) | Distinguishes blistering/flaking paint boundaries from normal flat wall color variations |
 
-`compute_severity(image_path, defect_label)` dispatches on the label and
-returns a rounded score. This score is stored as `severity_score` on the
-complaint.
+`compute_severity(image_path, defect_label)` dispatches on the predicted label and returns a rounded, calibrated score stored as `severity_score` on the complaint row.
 
 ### 5.3 Final ranking
 
@@ -574,26 +571,40 @@ Ordered by expected value for effort, based on the iteration in §9.5.
 
 ## 14. Setup & running
 
-### Backend
+### 🚀 1-Step Full-Stack Launch (Recommended)
+
+From the project root:
+
+```bash
+npm start
+# or: npm run dev
+```
+
+Concurrently starts both the FastAPI backend on `http://localhost:8005` and Vite React frontend on `http://localhost:5173`.
+
+---
+
+### Alternative: Running Separately
+
+#### Backend
 
 ```bash
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m app.seed                     # create demo accounts (optional, wipes DB)
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8005
 ```
 
-- Interactive API docs: `http://localhost:8000/docs`
+- Interactive API docs: `http://localhost:8005/docs`
 - `DATABASE_URL` env var → Postgres for hosting; `JWT_SECRET` env var in prod.
 - `head.pt` is already committed — no training step required to run.
 
-### Frontend
+#### Frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env      # set VITE_API_URL / VITE_WS_URL to the backend
 npm run dev               # http://localhost:5173
 ```
 

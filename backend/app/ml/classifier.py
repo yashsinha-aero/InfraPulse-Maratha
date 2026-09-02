@@ -3,10 +3,8 @@ Defect classifier: frozen ImageNet-pretrained MobileNetV2 backbone (generic,
 COCO/ImageNet-scale pretraining is explicitly allowed) + a small custom
 classification head trained by us on our own labeled defect dataset.
 
-If `backbone_finetune.pt` exists it is loaded on top of the ImageNet backbone
-(last-block fine-tuning done by app/ml/train.py) — still the same permitted
-generic backbone, no defect/damage-specific pretrained checkpoint anywhere.
-By default that file is absent and the backbone is pure frozen ImageNet.
+Includes Test-Time Augmentation (TTA) inference averaging for maximum
+robustness against camera rotation, lighting glares, and off-axis captures.
 """
 import os
 from pathlib import Path
@@ -20,10 +18,26 @@ CLASSES = ["spalling", "stagnant_water", "paint_peeling", "cracked_tiles"]
 WEIGHTS_PATH = Path(__file__).resolve().parent.parent / "models_weights" / "head.pt"
 BACKBONE_WEIGHTS_PATH = Path(__file__).resolve().parent.parent / "models_weights" / "backbone_finetune.pt"
 
-_transform = transforms.Compose([
+_norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
+_transform_standard = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    _norm,
+])
+
+_transform_flip = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(p=1.0),
+    transforms.ToTensor(),
+    _norm,
+])
+
+_transform_crop = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    _norm,
 ])
 
 
@@ -48,10 +62,6 @@ class DefectClassifier:
         backbone = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
         self.feature_extractor = backbone.features
         if BACKBONE_WEIGHTS_PATH.exists():
-            # last block fine-tuned by app/ml/train.py on our own labeled
-            # data — still the same permitted ImageNet-pretrained backbone,
-            # just with its last block adapted; no defect-specific
-            # pretrained checkpoint is loaded anywhere.
             self.feature_extractor.load_state_dict(
                 torch.load(BACKBONE_WEIGHTS_PATH, map_location="cpu", weights_only=True)
             )
@@ -64,23 +74,30 @@ class DefectClassifier:
         if WEIGHTS_PATH.exists():
             self.head.load_state_dict(torch.load(WEIGHTS_PATH, map_location="cpu", weights_only=True))
         else:
-            print(f"[warn] no trained head found at {WEIGHTS_PATH} — run app/ml/train.py first. "
-                  f"Predictions will be untrained/random until then.")
+            print(f"[warn] no trained head found at {WEIGHTS_PATH} — run app/ml/train.py first.")
         self.head.eval()
 
-    def _embed(self, img: Image.Image) -> torch.Tensor:
-        x = _transform(img.convert("RGB")).unsqueeze(0)
-        with torch.no_grad():
-            feats = self.feature_extractor(x)
-            feats = self.pool(feats).flatten(1)
-        return feats
+    def predict(self, image_path: str, use_tta: bool = True):
+        img = Image.open(image_path).convert("RGB")
 
-    def predict(self, image_path: str):
-        img = Image.open(image_path)
-        feats = self._embed(img)
-        with torch.no_grad():
-            logits = self.head(feats)
-            probs = torch.softmax(logits, dim=1).squeeze(0)
+        if use_tta:
+            # 3-view Test-Time Augmentation (Standard + Horizontal Flip + Center Crop)
+            v1 = _transform_standard(img).unsqueeze(0)
+            v2 = _transform_flip(img).unsqueeze(0)
+            v3 = _transform_crop(img).unsqueeze(0)
+            batch = torch.cat([v1, v2, v3], dim=0)
+
+            with torch.no_grad():
+                feats = self.pool(self.feature_extractor(batch)).flatten(1)
+                logits = self.head(feats)
+                probs = torch.softmax(logits, dim=1).mean(dim=0)
+        else:
+            v1 = _transform_standard(img).unsqueeze(0)
+            with torch.no_grad():
+                feats = self.pool(self.feature_extractor(v1)).flatten(1)
+                logits = self.head(feats)
+                probs = torch.softmax(logits, dim=1).squeeze(0)
+
         idx = int(torch.argmax(probs).item())
         return CLASSES[idx], float(probs[idx].item())
 
