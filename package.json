@@ -8,6 +8,7 @@
     "start": "node start.js",
     "backend": "cd backend && .venv/bin/uvicorn app.main:app --port 8005 --reload",
     "frontend": "npm --prefix frontend run dev",
-    "build": "npm --prefix frontend run build"
+    "install-frontend": "npm --prefix frontend install",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build"
   }
 }
