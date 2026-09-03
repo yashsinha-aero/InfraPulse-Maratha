@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -12,9 +13,15 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="InfraPulse API")
 
+# ALLOWED_ORIGINS env var: comma-separated list of allowed origins.
+# Set this in your Hugging Face Space secrets to your frontend URL.
+# Defaults to "*" for local development.
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten to the deployed frontend origin before submission
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

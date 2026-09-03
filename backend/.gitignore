@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# DB (will be created fresh on startup)
+infrapulse.db
+
+# User uploads (runtime data)
+app/data/uploads/*
+!app/data/uploads/.gitkeep
+
+# Training artifacts
+app/ml/train.py
+app/ml/evaluate.py
+app/data/dataset/
+
+# Backup weights
+app/models_weights/*.bak
+
+# OS
+.DS_Store
