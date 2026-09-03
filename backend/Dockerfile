@@ -28,7 +28,8 @@ RUN mkdir -p /app/app/data/uploads && \
 
 USER appuser
 
-# HF Spaces exposes port 7860
-EXPOSE 7860
+# Cloud Run injects the PORT environment variable (defaults to 8080)
+ENV PORT=8080
+EXPOSE 8080
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}
