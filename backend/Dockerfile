@@ -6,18 +6,17 @@ RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-# Install system deps needed by OpenCV
-RUN apt-get update && apt-get install -y \
+# Install minimal system deps needed by OpenCV / PIL
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
-    libsm6 \
-    libxrender1 \
-    libxext6 \
-    libgl1-mesa-glx \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install CPU-only torch/torchvision first, then the rest
+RUN pip install --no-cache-dir torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
